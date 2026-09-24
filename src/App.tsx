@@ -1,128 +1,128 @@
+import { useMemo, useState } from "react";
 import "./styles.css";
+import { StoreProvider, useStore } from "./store/store";
+import { QueueView } from "./components/QueueView";
+import { DetailView } from "./components/DetailView";
+import { LocationsView } from "./components/LocationsView";
+import { CabinetView } from "./components/CabinetView";
 
-const project = {
-  "sourceNo": 9,
-  "id": "hxyfront-62007",
-  "port": 62007,
-  "title": "植物标本馆入库",
-  "domain": "植物标本馆",
-  "prompt": "开发一个植物标本馆压制标本入库前端项目，工作人员可以录入采集号、物种名称、采集地点、海拔、生境描述、采集人、压制状态、鉴定状态和馆藏位置。页面需要有入库队列、鉴定状态筛选、采集地点信息卡、馆藏柜位记录和单份标本详情页。",
-  "palette": [
-    "#166534",
-    "#0f766e",
-    "#ca8a04"
-  ],
-  "metrics": [
-    "入库队列",
-    "待鉴定",
-    "已上柜",
-    "采集点"
-  ],
-  "filters": [
-    "待压制",
-    "待鉴定",
-    "已入库",
-    "需补照"
-  ],
-  "fields": [
-    "采集号",
-    "物种名称",
-    "采集地点",
-    "海拔",
-    "生境描述",
-    "馆藏位置"
-  ],
-  "records": [
-    [
-      "HX-240615-01",
-      "槭属待定",
-      "海拔1420m",
-      "待鉴定"
-    ],
-    [
-      "HX-240615-08",
-      "蕨类",
-      "阴湿沟谷",
-      "已压制"
-    ],
-    [
-      "HX-240616-03",
-      "菊科",
-      "柜位B-12-04",
-      "已入库"
-    ]
-  ]
-};
+type Tab = "queue" | "locations" | "cabinets";
 
-function App() {
+/** 页面状态：只在内存中维护，与校录判定等领域数据分开，不写入本地存档 */
+interface ViewState {
+  tab: Tab;
+  detailId: string | null;
+}
+
+function Metrics() {
+  const { state } = useStore();
+  const metrics = useMemo(() => {
+    const waiting = state.specimens.filter((s) => s.status === "waiting").length;
+    const review = state.specimens.filter(
+      (s) => s.status === "review" || s.amendments.some((a) => a.status === "review"),
+    ).length;
+    const archived = state.specimens.filter((s) => s.status === "archived").length;
+    const locations = new Set(
+      state.specimens
+        .map((s) => (s.status === "archived" && s.locked ? s.locked.location : s.label.location))
+        .filter(Boolean),
+    ).size;
+    return [
+      { label: "待领取", value: waiting },
+      { label: "待复核（含变更）", value: review },
+      { label: "已建档", value: archived },
+      { label: "采集点", value: locations },
+    ];
+  }, [state]);
+
+  return (
+    <section className="metrics">
+      {metrics.map((m) => (
+        <article key={m.label}>
+          <small>{m.label}</small>
+          <strong>{m.value}</strong>
+        </article>
+      ))}
+    </section>
+  );
+}
+
+function Shell() {
+  const { staff, setStaff, resetAll, state } = useStore();
+  // 页面状态独立维护：切 tab、打开详情都不触碰存档
+  const [view, setView] = useState<ViewState>({ tab: "queue", detailId: null });
+
+  const detail = view.detailId ? state.specimens.find((s) => s.id === view.detailId) : undefined;
+
+  const open = (id: string) => setView({ tab: "queue", detailId: id });
+  const back = () => setView((v) => ({ ...v, detailId: null }));
+
+  const tabs: Array<{ key: Tab; text: string }> = [
+    { key: "queue", text: "转录队列" },
+    { key: "locations", text: "采集地点信息卡" },
+    { key: "cabinets", text: "馆藏柜位记录" },
+  ];
+
   return (
     <main className="app">
-      <section className="hero">
-        <p>{project.id} · 源提示词{project.sourceNo} · Port {project.port}</p>
-        <h1>{project.title}</h1>
-        <span>{project.prompt}</span>
-      </section>
-
-      <section className="metrics">
-        {project.metrics.map((metric: string, index: number) => (
-          <article key={metric}>
-            <small>{metric}</small>
-            <strong>{[86, 14, 7, 32][index] ?? 12}</strong>
-          </article>
-        ))}
-      </section>
-
-      <section className="workspace">
-        <aside className="panel">
-          <h2>{project.domain}筛选</h2>
-          <div className="chips">
-            {project.filters.map((item: string) => (
-              <button key={item}>{item}</button>
-            ))}
-          </div>
-        </aside>
-
-        <section className="panel form-panel">
-          <div className="heading">
-            <div>
-              <p>专业字段</p>
-              <h2>新增记录</h2>
-            </div>
-            <button className="primary">保存草稿</button>
-          </div>
-          <div className="field-grid">
-            {project.fields.map((field: string) => (
-              <label key={field}>
-                <span>{field}</span>
-                <input placeholder={"填写" + field} />
-              </label>
-            ))}
-          </div>
-        </section>
-      </section>
-
-      <section className="panel">
-        <div className="heading">
+      <header className="topbar">
+        <div className="brand">
+          <span className="leaf">❦</span>
           <div>
-            <p>历史记录</p>
-            <h2>近期工作台</h2>
+            <h1>植物标本馆数字建档</h1>
+            <p>纸签抄录 · 录入与复核分离 · 本地数据重开可续</p>
           </div>
-          <button>导出摘要</button>
         </div>
-        <div className="records">
-          {project.records.map((record: string[], index: number) => (
-            <article key={record.join("-")}>
-              <b>{String(index + 1).padStart(2, "0")}</b>
-              <div>
-                <h3>{record[0]}</h3>
-                <p>{record.slice(1).join(" · ")}</p>
-              </div>
-            </article>
-          ))}
+        <div className="staff-box">
+          <label>
+            <span>当前工作人员</span>
+            <input
+              value={staff}
+              placeholder="姓名（领取/复核身份）"
+              onChange={(e) => setStaff(e.target.value)}
+            />
+          </label>
+          <button
+            className="ghost"
+            onClick={() => {
+              if (confirm("恢复演示数据？当前本地存档将被覆盖。")) resetAll();
+            }}
+          >
+            重置演示数据
+          </button>
         </div>
-      </section>
+      </header>
+
+      <Metrics />
+
+      {view.tab === "queue" && detail ? (
+        <DetailView specimen={detail} onBack={back} />
+      ) : (
+        <>
+          <nav className="tabs">
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                className={view.tab === t.key ? "tab active" : "tab"}
+                onClick={() => setView({ tab: t.key, detailId: null })}
+              >
+                {t.text}
+              </button>
+            ))}
+          </nav>
+          {view.tab === "queue" && <QueueView onOpen={open} />}
+          {view.tab === "locations" && <LocationsView onOpen={open} />}
+          {view.tab === "cabinets" && <CabinetView onOpen={open} />}
+        </>
+      )}
     </main>
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <StoreProvider>
+      <Shell />
+    </StoreProvider>
+  );
+}
